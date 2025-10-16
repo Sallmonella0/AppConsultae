@@ -1,46 +1,129 @@
-// Ficheiro: ui/screen/ConsultaScreen.kt (VERSÃO COMPLETA E CORRIGIDA)
 package com.example.appconsultas.ui.screen
 
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.appconsultas.data.ConsultaRecord
 import com.example.appconsultas.ui.viewmodel.Coluna
 import com.example.appconsultas.ui.viewmodel.ColunaFiltro
 import com.example.appconsultas.ui.viewmodel.ConsultaViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConsultaScreen(viewModel: ConsultaViewModel) {
-    // A correção do erro anterior está aqui: removemos o `initialValue`
     val registos by viewModel.registosFinais.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
     var mostrarDialogoColunas by remember { mutableStateOf(false) }
     val registoSelecionado by viewModel.registoSelecionado.collectAsState()
+    val context = LocalContext.current
+    var showExportMenu by remember { mutableStateOf(false) }
+
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    val csvFileSaverLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv"),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                try {
+                    val content = viewModel.gerarConteudoCSV()
+                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                        outputStream.write(content.toByteArray())
+                    }
+                    scope.launch { snackbarHostState.showSnackbar("Ficheiro CSV guardado!") }
+                } catch (e: Exception) {
+                    scope.launch { snackbarHostState.showSnackbar("Erro ao guardar: ${e.message}") }
+                }
+            }
+        }
+    )
+
+    val xmlFileSaverLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/xml"),
+        onResult = { uri: Uri? ->
+            uri?.let {
+                try {
+                    val content = viewModel.gerarConteudoXML()
+                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                        outputStream.write(content.toByteArray())
+                    }
+                    scope.launch { snackbarHostState.showSnackbar("Ficheiro XML guardado!") }
+                } catch (e: Exception) {
+                    scope.launch { snackbarHostState.showSnackbar("Erro ao guardar: ${e.message}") }
+                }
+            }
+        }
+    )
 
     Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("App de Consulta") },
+                title = { Text("Consultas") },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
-                )
+                ),
+                actions = {
+                    ThemeMenu(viewModel = viewModel)
+                }
             )
+        },
+        floatingActionButton = {
+            Box {
+                FloatingActionButton(
+                    onClick = { showExportMenu = true }
+                ) {
+                    Icon(Icons.Default.Download, contentDescription = "Exportar Dados")
+                }
+
+                DropdownMenu(
+                    expanded = showExportMenu,
+                    onDismissRequest = { showExportMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Exportar para CSV") },
+                        onClick = {
+                            showExportMenu = false
+                            val timestamp = System.currentTimeMillis()
+                            csvFileSaverLauncher.launch("consulta_$timestamp.csv")
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Exportar para XML") },
+                        onClick = {
+                            showExportMenu = false
+                            val timestamp = System.currentTimeMillis()
+                            xmlFileSaverLauncher.launch("consulta_$timestamp.xml")
+                        }
+                    )
+                }
+            }
         }
     ) { paddingValues ->
         Column(
@@ -57,7 +140,7 @@ fun ConsultaScreen(viewModel: ConsultaViewModel) {
                     CircularProgressIndicator(modifier = Modifier.size(50.dp))
                 }
             } else {
-                ListaDeRegistos(
+                TabelaDeRegistos(
                     viewModel = viewModel,
                     registos = registos,
                     onRegistoClick = { viewModel.onRegistoClicked(it) }
@@ -90,33 +173,33 @@ fun ControlesDaConsulta(viewModel: ConsultaViewModel, onMostrarDialogoColunas: (
     val colunaFiltro by viewModel.colunaFiltroSelecionada.collectAsState()
 
     Column {
-        OutlinedTextField(
-            value = textoIdConsulta,
-            onValueChange = { viewModel.onTextoIdChange(it) },
-            label = { Text("Consultar por IDMENSAGEM") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Ícone de busca") },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { viewModel.consultarPorId() }, modifier = Modifier.weight(1f)) { Text("Consultar") }
-            Button(onClick = { viewModel.carregarDadosIniciais() }, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Default.Refresh, contentDescription = "Atualizar"); Spacer(Modifier.size(ButtonDefaults.IconSpacing)); Text("Atualizar")
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = textoIdConsulta,
+                onValueChange = { viewModel.onTextoIdChange(it) },
+                label = { Text("Consultar por ID") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.weight(1f)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(onClick = { viewModel.consultarPorId() }) {
+                Icon(Icons.Default.Search, contentDescription = "Consultar por ID")
             }
-            Button(onClick = onMostrarDialogoColunas, modifier = Modifier.weight(1f)) {
-                Icon(Icons.Default.List, contentDescription = "Colunas"); Spacer(Modifier.size(ButtonDefaults.IconSpacing)); Text("Colunas")
+            IconButton(onClick = { viewModel.carregarDadosIniciais() }) {
+                Icon(Icons.Default.Refresh, contentDescription = "Atualizar Lista")
+            }
+            IconButton(onClick = onMostrarDialogoColunas) {
+                Icon(Icons.Default.Visibility, contentDescription = "Selecionar Colunas")
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
-        Divider()
 
-        Row(modifier = Modifier.fillMaxWidth().padding(top = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = textoDoFiltro,
                 onValueChange = { viewModel.onTextoDoFiltroChange(it) },
                 label = { Text("Filtrar na lista...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Ícone de filtro") },
+                leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = "Ícone de filtro") },
                 trailingIcon = {
                     if (textoDoFiltro.isNotEmpty()) {
                         IconButton(onClick = { viewModel.limparFiltros() }) {
@@ -136,84 +219,159 @@ fun ControlesDaConsulta(viewModel: ConsultaViewModel, onMostrarDialogoColunas: (
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ListaDeRegistos(
+fun TabelaDeRegistos(
     viewModel: ConsultaViewModel,
     registos: List<ConsultaRecord>,
     onRegistoClick: (ConsultaRecord) -> Unit
 ) {
-    val isLoading by viewModel.isLoading.collectAsState()
+    val colunasVisiveis by viewModel.colunasVisiveis.collectAsState()
+    val colunaOrdenacao by viewModel.colunaOrdenacao.collectAsState()
+    val ordemDescendente by viewModel.ordemDescendente.collectAsState()
 
-    if (registos.isEmpty() && !isLoading) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+    if (registos.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Sem Resultados", style = MaterialTheme.typography.headlineSmall)
-            Text("A sua busca não encontrou registos.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(registos) { registo ->
-            RegistoCard(
-                registo = registo,
-                onClick = { onRegistoClick(registo) }
-            )
+    LazyColumn(Modifier.fillMaxSize()) {
+        stickyHeader {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .padding(vertical = 4.dp)
+            ) {
+                for (coluna in Coluna.values()) {
+                    if (colunasVisiveis.contains(coluna)) {
+                        TableCell(
+                            text = coluna.displayName,
+                            weight = coluna.getWeight(),
+                            isHeader = true,
+                            onClick = { viewModel.onOrdenarPor(coluna) }
+                        ) {
+                            if (colunaOrdenacao == coluna) {
+                                Icon(
+                                    if (ordemDescendente) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                                    contentDescription = "Ordenação",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        itemsIndexed(registos, key = { _, item -> item.idMensagem }) { index, registo ->
+            val corFundo = if (index % 2 == 0) {
+                MaterialTheme.colorScheme.surface
+            } else {
+                MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
+            }
+
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(corFundo)
+                    .clickable { onRegistoClick(registo) }
+                    .animateItemPlacement()
+            ) {
+                if (colunasVisiveis.contains(Coluna.DATA_HORA)) {
+                    TableCell(text = registo.dataHora ?: "N/A", weight = Coluna.DATA_HORA.getWeight())
+                }
+                if (colunasVisiveis.contains(Coluna.ID_MENSAGEM)) {
+                    TableCell(text = registo.idMensagem.toString(), weight = Coluna.ID_MENSAGEM.getWeight())
+                }
+                if (colunasVisiveis.contains(Coluna.PLACA)) {
+                    TableCell(
+                        text = registo.placa ?: "N/A",
+                        weight = Coluna.PLACA.getWeight(),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                if (colunasVisiveis.contains(Coluna.TRACK_ID)) {
+                    TableCell(text = registo.trackId ?: "N/A", weight = Coluna.TRACK_ID.getWeight())
+                }
+            }
+            Divider(thickness = 0.5.dp)
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+fun Coluna.getWeight(): Float {
+    return when (this) {
+        Coluna.DATA_HORA -> 3.0f
+        Coluna.ID_MENSAGEM -> 2.5f
+        Coluna.PLACA -> 1.5f
+        Coluna.TRACK_ID -> 1.5f
+        Coluna.LATITUDE -> 2.0f
+        Coluna.LONGITUDE -> 2.0f
+    }
+}
+
 @Composable
-fun RegistoCard(registo: ConsultaRecord, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        onClick = onClick
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = registo.placa ?: "Sem Placa",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "TrackID: ${registo.trackId ?: "N/A"}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = registo.dataHora ?: "Data indisponível",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.End)
-            )
+fun RowScope.TableCell(
+    text: String,
+    weight: Float,
+    isHeader: Boolean = false,
+    fontWeight: FontWeight = FontWeight.Normal,
+    textColor: Color = Color.Unspecified,
+    onClick: (() -> Unit)? = null,
+    headerContent: @Composable RowScope.() -> Unit = {}
+) {
+    val finalFontWeight = if (isHeader) FontWeight.Bold else fontWeight
+
+    val modifier = Modifier
+        .weight(weight)
+        .padding(horizontal = 8.dp, vertical = 16.dp)
+
+    val content: @Composable () -> Unit = {
+        Text(
+            text = text,
+            style = if (isHeader) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
+            fontWeight = finalFontWeight,
+            color = textColor,
+            overflow = TextOverflow.Ellipsis,
+            maxLines = 1
+        )
+    }
+
+    if (isHeader && onClick != null) {
+        Row(
+            modifier = modifier.clickable(onClick = onClick),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            content()
+            headerContent()
+        }
+    } else {
+        Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
+            content()
         }
     }
 }
 
 @Composable
 fun DetailsDialog(record: ConsultaRecord, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Detalhes do Registo") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val details = listOf(
+                    "Data/Hora" to record.dataHora,
                     "IDMENSAGEM" to record.idMensagem,
-                    "TrackID" to record.trackId,
-                    "Placa" to record.placa,
                     "Latitude" to record.latitude,
                     "Longitude" to record.longitude,
-                    "Data/Hora" to record.dataHora
+                    "Placa" to record.placa,
+                    "TrackID" to record.trackId
                 )
                 details.forEach { (key, value) ->
                     Row {
@@ -224,7 +382,32 @@ fun DetailsDialog(record: ConsultaRecord, onDismiss: () -> Unit) {
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) { Text("Fechar") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (record.latitude != null && record.longitude != null) {
+                    TextButton(
+                        onClick = {
+                            val gmmIntentUri = Uri.parse("geo:${record.latitude},${record.longitude}?q=${record.latitude},${record.longitude}(Registo)")
+                            val mapIntent = Intent(Intent.ACTION_VIEW, gmmIntentUri)
+                            mapIntent.setPackage("com.google.android.apps.maps")
+                            try {
+                                context.startActivity(mapIntent)
+                            } catch (e: Exception) {
+                                context.startActivity(Intent(Intent.ACTION_VIEW, gmmIntentUri))
+                            }
+                        }
+                    ) {
+                        Text("Ver no Mapa")
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Button(onClick = onDismiss) {
+                    Text("Fechar")
+                }
+            }
         }
     )
 }
@@ -239,8 +422,10 @@ fun ColumnSelectionDialog(
         onDismissRequest = onDismiss,
         title = { Text("Selecionar Colunas Visíveis") },
         text = {
-            Column {
-                Coluna.values().forEach { coluna ->
+            LazyColumn {
+                // <<<----------- CORREÇÃO AQUI -----------
+                // Converte o Array para uma Lista para evitar ambiguidade
+                items(Coluna.values().toList()) { coluna ->
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
@@ -300,6 +485,49 @@ fun FiltroColunaDropDown(
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+fun ThemeMenu(viewModel: ConsultaViewModel) {
+    var showMenu by remember { mutableStateOf(false) }
+    val isDarkTheme by viewModel.isDarkTheme.collectAsState()
+
+    Box {
+        IconButton(onClick = { showMenu = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = "Menu de Opções", tint = MaterialTheme.colorScheme.onPrimary)
+        }
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Tema Claro") },
+                onClick = {
+                    viewModel.setTheme(false)
+                    showMenu = false
+                },
+                leadingIcon = {
+                    Icon(
+                        if (!isDarkTheme) Icons.Filled.Check else Icons.Default.RadioButtonUnchecked,
+                        contentDescription = "Tema Claro"
+                    )
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Tema Escuro") },
+                onClick = {
+                    viewModel.setTheme(true)
+                    showMenu = false
+                },
+                leadingIcon = {
+                    Icon(
+                        if (isDarkTheme) Icons.Filled.Check else Icons.Default.RadioButtonUnchecked,
+                        contentDescription = "Tema Escuro"
+                    )
+                }
+            )
         }
     }
 }

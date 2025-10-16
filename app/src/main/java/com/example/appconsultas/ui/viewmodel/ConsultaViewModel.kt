@@ -1,4 +1,3 @@
-// Ficheiro: ui/viewmodel/ConsultaViewModel.kt (VERSÃO COMPLETA E CORRIGIDA)
 package com.example.appconsultas.ui.viewmodel
 
 import android.util.Log
@@ -10,19 +9,23 @@ import com.example.appconsultas.data.RetrofitInstance
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-// Enums para representar as colunas de filtro e ordenação
-enum class ColunaFiltro { TODAS, PLACA, TRACK_ID }
+enum class ColunaFiltro {
+    TODAS, PLACA, TRACK_ID
+}
+
 enum class Coluna(val displayName: String) {
-    TRACK_ID("TrackID"),
+    DATA_HORA("Data/Hora"),
+    ID_MENSAGEM("ID Mensagem"),
+    LATITUDE("Latitude"),
+    LONGITUDE("Longitude"),
     PLACA("Placa"),
-    DATA_HORA("Data/Hora")
+    TRACK_ID("TrackID")
 }
 
 class ConsultaViewModel : ViewModel() {
 
     private val authHeader = "Basic dmlwOjgzMTE0ZDhmYzMxNjRkZTRlODViNGU2ZWU4YTA0YmJk"
 
-    // --- ESTADOS INTERNOS (Privados) ---
     private val _todosOsRegistos = MutableStateFlow<List<ConsultaRecord>>(emptyList())
     private val _textoDoFiltro = MutableStateFlow("")
     private val _textoIdConsulta = MutableStateFlow("")
@@ -30,10 +33,12 @@ class ConsultaViewModel : ViewModel() {
     private val _colunaFiltroSelecionada = MutableStateFlow(ColunaFiltro.TODAS)
     private val _colunaOrdenacao = MutableStateFlow<Coluna?>(null)
     private val _ordemDescendente = MutableStateFlow(true)
-    private val _colunasVisiveis = MutableStateFlow(setOf(Coluna.TRACK_ID, Coluna.PLACA, Coluna.DATA_HORA))
+    // <<<----------- ALTERAÇÃO AQUI: Define as colunas visíveis por defeito -----------
+    private val _colunasVisiveis = MutableStateFlow(
+        setOf(Coluna.DATA_HORA, Coluna.ID_MENSAGEM, Coluna.PLACA, Coluna.TRACK_ID)
+    )
     private val _registoSelecionado = MutableStateFlow<ConsultaRecord?>(null)
 
-    // --- ESTADOS EXPOSTOS PARA A UI (Públicos) ---
     val textoDoFiltro = _textoDoFiltro.asStateFlow()
     val textoIdConsulta = _textoIdConsulta.asStateFlow()
     val isLoading = _isLoading.asStateFlow()
@@ -43,7 +48,13 @@ class ConsultaViewModel : ViewModel() {
     val colunasVisiveis = _colunasVisiveis.asStateFlow()
     val registoSelecionado = _registoSelecionado.asStateFlow()
 
-    // Lógica reativa para filtrar e ordenar a lista, convertida para um StateFlow
+    private val _isDarkTheme = MutableStateFlow(false)
+    val isDarkTheme = _isDarkTheme.asStateFlow()
+
+    fun setTheme(isDark: Boolean) {
+        _isDarkTheme.value = isDark
+    }
+
     val registosFinais: StateFlow<List<ConsultaRecord>> = combine(
         _todosOsRegistos, _textoDoFiltro, _colunaFiltroSelecionada, _colunaOrdenacao, _ordemDescendente
     ) { lista, texto, colFiltro, colSort, isDesc ->
@@ -60,8 +71,11 @@ class ConsultaViewModel : ViewModel() {
         }
         val listaOrdenada = when (colSort) {
             null -> listaFiltrada
+            Coluna.ID_MENSAGEM -> listaFiltrada.sortedBy { it.idMensagem }
             Coluna.TRACK_ID -> listaFiltrada.sortedBy { it.trackId }
             Coluna.PLACA -> listaFiltrada.sortedBy { it.placa }
+            Coluna.LATITUDE -> listaFiltrada.sortedBy { it.latitude }
+            Coluna.LONGITUDE -> listaFiltrada.sortedBy { it.longitude }
             Coluna.DATA_HORA -> listaFiltrada.sortedBy { it.dataHora }
         }
         if (isDesc) listaOrdenada.reversed() else listaOrdenada
@@ -76,11 +90,11 @@ class ConsultaViewModel : ViewModel() {
         carregarDadosIniciais()
     }
 
-    // --- FUNÇÕES CHAMADAS PELA UI ---
     fun carregarDadosIniciais() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                _textoIdConsulta.value = ""
                 val requestBody = ConsultaRequestBody(IDMENSAGEM = 0)
                 _todosOsRegistos.value = RetrofitInstance.api.buscarTodos(authHeader, requestBody)
             } catch (e: Exception) {
@@ -92,10 +106,11 @@ class ConsultaViewModel : ViewModel() {
     }
 
     fun consultarPorId() {
-        val id = _textoIdConsulta.value.toIntOrNull() ?: return
+        val id = _textoIdConsulta.value.toLongOrNull() ?: return
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                _textoDoFiltro.value = ""
                 val requestBody = ConsultaRequestBody(IDMENSAGEM = id)
                 _todosOsRegistos.value = RetrofitInstance.api.consultarPorId(authHeader, requestBody)
             } catch (e: Exception) {
@@ -104,6 +119,40 @@ class ConsultaViewModel : ViewModel() {
             }
             _isLoading.value = false
         }
+    }
+
+    fun gerarConteudoCSV(): String {
+        val registos = registosFinais.value
+        val stringBuilder = StringBuilder()
+        stringBuilder.append("DATAHORA,IDMENSAGEM,LATITUDE,LONGITUDE,PLACA,TrackID\n")
+        registos.forEach { registo ->
+            stringBuilder.append(registo.dataHora ?: "").append(",")
+            stringBuilder.append(registo.idMensagem).append(",")
+            stringBuilder.append(registo.latitude?.toString() ?: "").append(",")
+            stringBuilder.append(registo.longitude?.toString() ?: "").append(",")
+            stringBuilder.append(registo.placa ?: "").append(",")
+            stringBuilder.append(registo.trackId ?: "")
+            stringBuilder.append("\n")
+        }
+        return stringBuilder.toString()
+    }
+
+    fun gerarConteudoXML(): String {
+        val registos = registosFinais.value
+        val stringBuilder = StringBuilder()
+        stringBuilder.append("<consultas>\n")
+        registos.forEach { registo ->
+            stringBuilder.append("  <registo>\n")
+            stringBuilder.append("    <DATAHORA>${registo.dataHora ?: ""}</DATAHORA>\n")
+            stringBuilder.append("    <IDMENSAGEM>${registo.idMensagem}</IDMENSAGEM>\n")
+            stringBuilder.append("    <LATITUDE>${registo.latitude?.toString() ?: ""}</LATITUDE>\n")
+            stringBuilder.append("    <LONGITUDE>${registo.longitude?.toString() ?: ""}</LONGITUDE>\n")
+            stringBuilder.append("    <PLACA>${registo.placa ?: ""}</PLACA>\n")
+            stringBuilder.append("    <TrackID>${registo.trackId ?: ""}</TrackID>\n")
+            stringBuilder.append("  </registo>\n")
+        }
+        stringBuilder.append("</consultas>")
+        return stringBuilder.toString()
     }
 
     fun onTextoDoFiltroChange(novoTexto: String) { _textoDoFiltro.value = novoTexto }
