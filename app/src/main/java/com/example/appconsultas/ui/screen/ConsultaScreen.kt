@@ -4,15 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -20,14 +18,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.appconsultas.data.ConsultaRecord
+import com.example.appconsultas.data.DateUtils
 import com.example.appconsultas.ui.viewmodel.Coluna
 import com.example.appconsultas.ui.viewmodel.ColunaFiltro
 import com.example.appconsultas.ui.viewmodel.ConsultaViewModel
@@ -38,7 +34,6 @@ import kotlinx.coroutines.launch
 fun ConsultaScreen(viewModel: ConsultaViewModel) {
     val registos by viewModel.registosFinais.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    var mostrarDialogoColunas by remember { mutableStateOf(false) }
     val registoSelecionado by viewModel.registoSelecionado.collectAsState()
     val context = LocalContext.current
     var showExportMenu by remember { mutableStateOf(false) }
@@ -132,7 +127,7 @@ fun ConsultaScreen(viewModel: ConsultaViewModel) {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            ControlesDaConsulta(viewModel, onMostrarDialogoColunas = { mostrarDialogoColunas = true })
+            ControlesDaConsulta(viewModel)
             Spacer(modifier = Modifier.height(16.dp))
 
             if (isLoading) {
@@ -140,21 +135,11 @@ fun ConsultaScreen(viewModel: ConsultaViewModel) {
                     CircularProgressIndicator(modifier = Modifier.size(50.dp))
                 }
             } else {
-                TabelaDeRegistos(
-                    viewModel = viewModel,
+                ListaDeRegistosEmCartoes(
                     registos = registos,
                     onRegistoClick = { viewModel.onRegistoClicked(it) }
                 )
             }
-        }
-
-        if (mostrarDialogoColunas) {
-            val colunasVisiveis by viewModel.colunasVisiveis.collectAsState()
-            ColumnSelectionDialog(
-                colunasVisiveis = colunasVisiveis,
-                onDismiss = { mostrarDialogoColunas = false },
-                onToggle = { viewModel.toggleVisibilidadeColuna(it) }
-            )
         }
 
         registoSelecionado?.let { record ->
@@ -167,7 +152,7 @@ fun ConsultaScreen(viewModel: ConsultaViewModel) {
 }
 
 @Composable
-fun ControlesDaConsulta(viewModel: ConsultaViewModel, onMostrarDialogoColunas: () -> Unit) {
+fun ControlesDaConsulta(viewModel: ConsultaViewModel) {
     val textoIdConsulta by viewModel.textoIdConsulta.collectAsState()
     val textoDoFiltro by viewModel.textoDoFiltro.collectAsState()
     val colunaFiltro by viewModel.colunaFiltroSelecionada.collectAsState()
@@ -188,9 +173,7 @@ fun ControlesDaConsulta(viewModel: ConsultaViewModel, onMostrarDialogoColunas: (
             IconButton(onClick = { viewModel.carregarDadosIniciais() }) {
                 Icon(Icons.Default.Refresh, contentDescription = "Atualizar Lista")
             }
-            IconButton(onClick = onMostrarDialogoColunas) {
-                Icon(Icons.Default.Visibility, contentDescription = "Selecionar Colunas")
-            }
+            MenuDeOrdenacao(viewModel = viewModel)
         }
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -219,140 +202,134 @@ fun ControlesDaConsulta(viewModel: ConsultaViewModel, onMostrarDialogoColunas: (
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TabelaDeRegistos(
-    viewModel: ConsultaViewModel,
-    registos: List<ConsultaRecord>,
-    onRegistoClick: (ConsultaRecord) -> Unit
-) {
-    val colunasVisiveis by viewModel.colunasVisiveis.collectAsState()
+fun MenuDeOrdenacao(viewModel: ConsultaViewModel) {
+    var expanded by remember { mutableStateOf(false) }
     val colunaOrdenacao by viewModel.colunaOrdenacao.collectAsState()
     val ordemDescendente by viewModel.ordemDescendente.collectAsState()
 
-    if (registos.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("Sem Resultados", style = MaterialTheme.typography.headlineSmall)
-        }
-        return
-    }
+    val colunasParaOrdenar = listOf(
+        Coluna.DATA_HORA,
+        Coluna.PLACA,
+        Coluna.ID_MENSAGEM,
+        Coluna.TRACK_ID
+    )
 
-    LazyColumn(Modifier.fillMaxSize()) {
-        stickyHeader {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                    .padding(vertical = 4.dp)
-            ) {
-                for (coluna in Coluna.values()) {
-                    if (colunasVisiveis.contains(coluna)) {
-                        TableCell(
-                            text = coluna.displayName,
-                            weight = coluna.getWeight(),
-                            isHeader = true,
-                            onClick = { viewModel.onOrdenarPor(coluna) }
-                        ) {
-                            if (colunaOrdenacao == coluna) {
-                                Icon(
-                                    if (ordemDescendente) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
-                                    contentDescription = "Ordenação",
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(Icons.Default.Sort, contentDescription = "Ordenar por")
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            colunasParaOrdenar.forEach { coluna ->
+                DropdownMenuItem(
+                    text = { Text(coluna.displayName) },
+                    onClick = {
+                        viewModel.onOrdenarPor(coluna)
+                        expanded = false
+                    },
+                    leadingIcon = {
+                        if (colunaOrdenacao == coluna) {
+                            Icon(
+                                imageVector = if (ordemDescendente) Icons.Default.ArrowDownward else Icons.Default.ArrowUpward,
+                                contentDescription = "Ordem atual"
+                            )
+                        } else {
+                            Spacer(modifier = Modifier.size(24.dp))
                         }
                     }
-                }
+                )
             }
         }
-
-        itemsIndexed(registos, key = { _, item -> item.idMensagem }) { index, registo ->
-            val corFundo = if (index % 2 == 0) {
-                MaterialTheme.colorScheme.surface
-            } else {
-                MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp)
-            }
-
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(corFundo)
-                    .clickable { onRegistoClick(registo) }
-                    .animateItemPlacement()
-            ) {
-                if (colunasVisiveis.contains(Coluna.DATA_HORA)) {
-                    TableCell(text = registo.dataHora ?: "N/A", weight = Coluna.DATA_HORA.getWeight())
-                }
-                if (colunasVisiveis.contains(Coluna.ID_MENSAGEM)) {
-                    TableCell(text = registo.idMensagem.toString(), weight = Coluna.ID_MENSAGEM.getWeight())
-                }
-                if (colunasVisiveis.contains(Coluna.PLACA)) {
-                    TableCell(
-                        text = registo.placa ?: "N/A",
-                        weight = Coluna.PLACA.getWeight(),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-                if (colunasVisiveis.contains(Coluna.TRACK_ID)) {
-                    TableCell(text = registo.trackId ?: "N/A", weight = Coluna.TRACK_ID.getWeight())
-                }
-            }
-            Divider(thickness = 0.5.dp)
-        }
-    }
-}
-
-fun Coluna.getWeight(): Float {
-    return when (this) {
-        Coluna.DATA_HORA -> 3.0f
-        Coluna.ID_MENSAGEM -> 2.5f
-        Coluna.PLACA -> 1.5f
-        Coluna.TRACK_ID -> 1.5f
-        Coluna.LATITUDE -> 2.0f
-        Coluna.LONGITUDE -> 2.0f
     }
 }
 
 @Composable
-fun RowScope.TableCell(
-    text: String,
-    weight: Float,
-    isHeader: Boolean = false,
-    fontWeight: FontWeight = FontWeight.Normal,
-    textColor: Color = Color.Unspecified,
-    onClick: (() -> Unit)? = null,
-    headerContent: @Composable RowScope.() -> Unit = {}
+fun ListaDeRegistosEmCartoes(
+    registos: List<ConsultaRecord>,
+    onRegistoClick: (ConsultaRecord) -> Unit
 ) {
-    val finalFontWeight = if (isHeader) FontWeight.Bold else fontWeight
-
-    val modifier = Modifier
-        .weight(weight)
-        .padding(horizontal = 8.dp, vertical = 16.dp)
-
-    val content: @Composable () -> Unit = {
-        Text(
-            text = text,
-            style = if (isHeader) MaterialTheme.typography.titleSmall else MaterialTheme.typography.bodyMedium,
-            fontWeight = finalFontWeight,
-            color = textColor,
-            overflow = TextOverflow.Ellipsis,
-            maxLines = 1
-        )
+    if (registos.isEmpty()) {
+        EstadoVazio()
+        return
     }
 
-    if (isHeader && onClick != null) {
-        Row(
-            modifier = modifier.clickable(onClick = onClick),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp)
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(registos) {
+        visible = true
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(durationMillis = 500))
+    ) {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            content()
-            headerContent()
+            items(registos, key = { it.idMensagem }) { registo ->
+                RegistoCard(
+                    registo = registo,
+                    onClick = { onRegistoClick(registo) }
+                )
+            }
         }
-    } else {
-        Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-            content()
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RegistoCard(registo: ConsultaRecord, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        onClick = onClick
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = registo.placa ?: "Sem Placa",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "TrackID: ${registo.trackId ?: "N/A"}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = DateUtils.formatarDataHora(registo.dataHora),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.align(Alignment.End)
+            )
         }
+    }
+}
+
+@Composable
+fun EstadoVazio() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = Icons.Default.SearchOff,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text("Nenhum Resultado", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "A sua busca não encontrou registos.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -366,17 +343,17 @@ fun DetailsDialog(record: ConsultaRecord, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val details = listOf(
-                    "Data/Hora" to record.dataHora,
-                    "IDMENSAGEM" to record.idMensagem,
-                    "Latitude" to record.latitude,
-                    "Longitude" to record.longitude,
-                    "Placa" to record.placa,
-                    "TrackID" to record.trackId
+                    "Data/Hora" to DateUtils.formatarDataHora(record.dataHora),
+                    "IDMENSAGEM" to (record.idMensagem.toString()),
+                    "Latitude" to (record.latitude?.toString() ?: "N/A"),
+                    "Longitude" to (record.longitude?.toString() ?: "N/A"),
+                    "Placa" to (record.placa ?: "N/A"),
+                    "TrackID" to (record.trackId ?: "N/A")
                 )
                 details.forEach { (key, value) ->
                     Row {
                         Text("$key:", fontWeight = FontWeight.Bold, modifier = Modifier.width(100.dp))
-                        Text(value?.toString() ?: "N/A")
+                        Text(value)
                     }
                 }
             }
@@ -408,40 +385,6 @@ fun DetailsDialog(record: ConsultaRecord, onDismiss: () -> Unit) {
                     Text("Fechar")
                 }
             }
-        }
-    )
-}
-
-@Composable
-fun ColumnSelectionDialog(
-    colunasVisiveis: Set<Coluna>,
-    onDismiss: () -> Unit,
-    onToggle: (Coluna) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Selecionar Colunas Visíveis") },
-        text = {
-            LazyColumn {
-                // <<<----------- CORREÇÃO AQUI -----------
-                // Converte o Array para uma Lista para evitar ambiguidade
-                items(Coluna.values().toList()) { coluna ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onToggle(coluna) }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Checkbox(checked = colunasVisiveis.contains(coluna), onCheckedChange = { onToggle(coluna) })
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(coluna.displayName)
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss) { Text("OK") }
         }
     )
 }

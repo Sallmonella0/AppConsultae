@@ -33,11 +33,9 @@ class ConsultaViewModel : ViewModel() {
     private val _colunaFiltroSelecionada = MutableStateFlow(ColunaFiltro.TODAS)
     private val _colunaOrdenacao = MutableStateFlow<Coluna?>(null)
     private val _ordemDescendente = MutableStateFlow(true)
-    // <<<----------- ALTERAÇÃO AQUI: Define as colunas visíveis por defeito -----------
-    private val _colunasVisiveis = MutableStateFlow(
-        setOf(Coluna.DATA_HORA, Coluna.ID_MENSAGEM, Coluna.PLACA, Coluna.TRACK_ID)
-    )
     private val _registoSelecionado = MutableStateFlow<ConsultaRecord?>(null)
+
+    // REMOVIDO: a lógica de colunas visíveis (_colunasVisiveis) foi retirada.
 
     val textoDoFiltro = _textoDoFiltro.asStateFlow()
     val textoIdConsulta = _textoIdConsulta.asStateFlow()
@@ -45,7 +43,6 @@ class ConsultaViewModel : ViewModel() {
     val colunaFiltroSelecionada = _colunaFiltroSelecionada.asStateFlow()
     val colunaOrdenacao = _colunaOrdenacao.asStateFlow()
     val ordemDescendente = _ordemDescendente.asStateFlow()
-    val colunasVisiveis = _colunasVisiveis.asStateFlow()
     val registoSelecionado = _registoSelecionado.asStateFlow()
 
     private val _isDarkTheme = MutableStateFlow(false)
@@ -122,6 +119,7 @@ class ConsultaViewModel : ViewModel() {
     }
 
     fun gerarConteudoCSV(): String {
+        // ... (código inalterado)
         val registos = registosFinais.value
         val stringBuilder = StringBuilder()
         stringBuilder.append("DATAHORA,IDMENSAGEM,LATITUDE,LONGITUDE,PLACA,TrackID\n")
@@ -138,6 +136,7 @@ class ConsultaViewModel : ViewModel() {
     }
 
     fun gerarConteudoXML(): String {
+        // ... (código inalterado)
         val registos = registosFinais.value
         val stringBuilder = StringBuilder()
         stringBuilder.append("<consultas>\n")
@@ -164,7 +163,7 @@ class ConsultaViewModel : ViewModel() {
             _ordemDescendente.value = !_ordemDescendente.value
         } else {
             _colunaOrdenacao.value = novaColuna
-            _ordemDescendente.value = true
+            _ordemDescendente.value = true // Sempre começa descendente ao trocar de coluna
         }
     }
 
@@ -172,17 +171,7 @@ class ConsultaViewModel : ViewModel() {
         _textoDoFiltro.value = ""
     }
 
-    fun toggleVisibilidadeColuna(coluna: Coluna) {
-        val visiveisAtuais = _colunasVisiveis.value.toMutableSet()
-        if (visiveisAtuais.contains(coluna)) {
-            if (visiveisAtuais.size > 1) {
-                visiveisAtuais.remove(coluna)
-            }
-        } else {
-            visiveisAtuais.add(coluna)
-        }
-        _colunasVisiveis.value = visiveisAtuais
-    }
+    // REMOVIDO: A função toggleVisibilidadeColuna() foi retirada.
 
     fun onRegistoClicked(registo: ConsultaRecord) {
         _registoSelecionado.value = registo
