@@ -3,7 +3,6 @@ package com.example.appconsultas.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-// IMPORTAR O NOVO MODELO (Assume que criaste Cliente.kt em 'data')
 import com.example.appconsultas.data.Cliente
 import com.example.appconsultas.data.ConsultaRecord
 import com.example.appconsultas.data.ConsultaRequestBody
@@ -11,12 +10,12 @@ import com.example.appconsultas.data.RetrofitInstance
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-// Enumeração para o filtro (igual ao original)
+// Enumeração para o filtro
 enum class ColunaFiltro {
     TODAS, PLACA, TRACK_ID
 }
 
-// Enumeração para as colunas (igual ao original)
+// Enumeração para as colunas
 enum class Coluna(val displayName: String) {
     DATA_HORA("Data/Hora"),
     ID_MENSAGEM("ID Mensagem"),
@@ -26,40 +25,43 @@ enum class Coluna(val displayName: String) {
     TRACK_ID("TrackID")
 }
 
+// Enum para controlar o estado do tema
+enum class ThemeMode { Light, Dark, System }
+
 class ConsultaViewModel : ViewModel() {
 
     val clientesDisponiveis = listOf(
         Cliente(
-            nome = "vip",
-            authHeader = "Basic 83114d8fc3164de4e85b4e6ee8a04bbd"
+            nome = "Vip",
+            authHeader = "Basic dmlwOjgzMTE0ZDhmYzMxNjRkZTRlODViNGU2ZWU4YTA0YmJk"
         ),
         Cliente(
-            nome = "ckl",
-            authHeader = "Basic d4f864e8421eb0bf07384a1ae831ab7b"
+            nome = "CKL",
+            authHeader = "Basic Y2tsOmQ0Zjg2NGU4NDIxZWIwYmYwNzM4NGExYWU4MzFhYjdi"
         ),
         Cliente(
-            nome = "everselog",
-            authHeader = "Basic dbbc6fa7bdaa7c9092a2b2560594ec55"
+            nome = "Reverselog",
+            authHeader = "Basic cmV2ZXJzZWxvZzpkYmJjNmZhN2JkYWE3YzkwOTJhMmIyNTYwNTk0ZWM1NQ=="
         ),
         Cliente(
-            nome = "rodoleve",
-            authHeader = "Basic d3a0b71c95972adf17822e30362680f8"
+            nome = "Rodoleve",
+            authHeader = "Basic cm9kb2xldmU6ZDNhMGI3MWM5NTk3MmFkZjE3ODIyZTMwMzYyNjgwZjg="
         ),
         Cliente(
             nome = "servidorGxBeloog",
-            authHeader = "Basic 0330265cbb2bf452ae54226c43b3d081"
+            authHeader = "Basic c2Vydmlkb3JHeEJlbG9vZzowMzMwMjY1Y2JiMmJmNDUyYWU1NDIyNmM0M2IzZDA4MQ=="
         ),
         Cliente(
-            nome = "gallotti",
-            authHeader = "Basic 0cb9bcfb3bd24a8ad373bb1c005e25c0"
+            nome = "Gallotti",
+            authHeader = "Basic Z2FsbG90dGk6MGNiOWJjZmIzYmQyNGE4YWQzNzNiYjFjMDA1ZTI1YzA="
         ),
         Cliente(
-            nome = "transgires",
-            authHeader = "Basic 18833edf8866b7f280266ecee733a43d"
+            nome = "Transgires",
+            authHeader = "Basic dHJhbnNnaXJlczoxODgzM2VkZjg4NjZiN2YyODAyNjZlY2VlNzMzYTQzZA=="
         ),
         Cliente(
             nome = "Agregamais",
-            authHeader = "Basic eabfe1ffdb963ed3656da4ed91f7b37a"
+            authHeader = "Basic YWdyZWdhbWFpczplYWJmZTFmZmRiOTYzZWQzNjU2ZGE0ZWQ5MWY3YjM3YQ=="
         )
     )
 
@@ -72,11 +74,10 @@ class ConsultaViewModel : ViewModel() {
     private val _colunaOrdenacao = MutableStateFlow<Coluna?>(null)
     private val _ordemDescendente = MutableStateFlow(true)
     private val _registoSelecionado = MutableStateFlow<ConsultaRecord?>(null)
-    private val _isDarkTheme = MutableStateFlow(false)
-
-    // ADICIONADO: Estado interno para o cliente selecionado
-    // Começa com o primeiro cliente da lista
     private val _clienteSelecionado = MutableStateFlow(clientesDisponiveis.first())
+
+    // O estado do tema começa como "Sistema"
+    private val _themeMode = MutableStateFlow(ThemeMode.System)
 
 
     // --- ESTADOS EXPOSTOS PARA A UI (Públicos) ---
@@ -87,16 +88,15 @@ class ConsultaViewModel : ViewModel() {
     val colunaOrdenacao = _colunaOrdenacao.asStateFlow()
     val ordemDescendente = _ordemDescendente.asStateFlow()
     val registoSelecionado = _registoSelecionado.asStateFlow()
-    val isDarkTheme = _isDarkTheme.asStateFlow()
-
-    // ADICIONADO: Estado exposto para o cliente selecionado
     val clienteSelecionado = _clienteSelecionado.asStateFlow()
+    val themeMode = _themeMode.asStateFlow()
 
-    fun setTheme(isDark: Boolean) {
-        _isDarkTheme.value = isDark
+
+    // Função para alterar o tema (chamada pelo AppDrawer)
+    fun setTheme(mode: ThemeMode) {
+        _themeMode.value = mode
     }
 
-    // Lógica de filtragem e ordenação (igual ao original)
     val registosFinais: StateFlow<List<ConsultaRecord>> = combine(
         _todosOsRegistos, _textoDoFiltro, _colunaFiltroSelecionada, _colunaOrdenacao, _ordemDescendente
     ) { lista, texto, colFiltro, colSort, isDesc ->
@@ -134,12 +134,10 @@ class ConsultaViewModel : ViewModel() {
 
     // --- FUNÇÕES CHAMADAS PELA UI ---
 
-    // ADICIONADO: Função para a UI atualizar o cliente
     fun onClienteSelecionadoChange(novoCliente: Cliente) {
-        if (novoCliente == _clienteSelecionado.value) return // Não faz nada se for o mesmo
+        if (novoCliente == _clienteSelecionado.value) return
 
         _clienteSelecionado.value = novoCliente
-        // Ao trocar de cliente, limpamos os filtros e carregamos os dados desse novo cliente
         limparFiltros()
         carregarDadosIniciais()
     }
@@ -150,11 +148,9 @@ class ConsultaViewModel : ViewModel() {
             _isLoading.value = true
             try {
                 _textoIdConsulta.value = ""
-                val requestBody = ConsultaRequestBody(IDMENSAGEM = 0) //
-
-                // MODIFICADO: Usar o header do cliente selecionado
+                val requestBody = ConsultaRequestBody(IDMENSAGEM = 0)
                 val header = _clienteSelecionado.value.authHeader
-                _todosOsRegistos.value = RetrofitInstance.api.buscarTodos(header, requestBody) //
+                _todosOsRegistos.value = RetrofitInstance.api.buscarTodos(header, requestBody)
 
             } catch (e: Exception) {
                 Log.e("ConsultaViewModel", "Falha ao carregar dados iniciais: ${e.message}", e)
@@ -170,11 +166,9 @@ class ConsultaViewModel : ViewModel() {
             _isLoading.value = true
             try {
                 _textoDoFiltro.value = ""
-                val requestBody = ConsultaRequestBody(IDMENSAGEM = id) //
-
-                // MODIFICADO: Usar o header do cliente selecionado
+                val requestBody = ConsultaRequestBody(IDMENSAGEM = id)
                 val header = _clienteSelecionado.value.authHeader
-                _todosOsRegistos.value = RetrofitInstance.api.consultarPorId(header, requestBody) //
+                _todosOsRegistos.value = RetrofitInstance.api.consultarPorId(header, requestBody)
 
             } catch (e: Exception) {
                 Log.e("ConsultaViewModel", "Falha ao consultar por ID: ${e.message}", e)
@@ -184,7 +178,7 @@ class ConsultaViewModel : ViewModel() {
         }
     }
 
-    // Funções de exportação (iguais ao original)
+    // Funções de exportação
     fun gerarConteudoCSV(): String {
         val registos = registosFinais.value
         val stringBuilder = StringBuilder()
@@ -219,7 +213,7 @@ class ConsultaViewModel : ViewModel() {
         return stringBuilder.toString()
     }
 
-    // Funções de controlo de estado (iguais ao original)
+    // Funções de controlo de estado
     fun onTextoDoFiltroChange(novoTexto: String) { _textoDoFiltro.value = novoTexto }
     fun onTextoIdChange(novoId: String) { _textoIdConsulta.value = novoId }
     fun onColunaFiltroChange(novaColuna: ColunaFiltro) { _colunaFiltroSelecionada.value = novaColuna }
@@ -229,7 +223,7 @@ class ConsultaViewModel : ViewModel() {
             _ordemDescendente.value = !_ordemDescendente.value
         } else {
             _colunaOrdenacao.value = novaColuna
-            _ordemDescendente.value = true // Sempre começa descendente ao trocar de coluna
+            _ordemDescendente.value = true
         }
     }
 

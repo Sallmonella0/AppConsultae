@@ -4,6 +4,7 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.Body
 import retrofit2.http.Header
+import retrofit2.http.Headers // <-- ADICIONADO IMPORT
 import retrofit2.http.POST
 
 object RetrofitInstance {
@@ -19,12 +20,17 @@ object RetrofitInstance {
 }
 
 interface ApiService {
+
+    // CORREÇÃO: Adicionado Header Content-Type
+    @Headers("Content-Type: application/json")
     @POST("api/data")
     suspend fun buscarTodos(
         @Header("Authorization") authHeader: String,
         @Body requestBody: ConsultaRequestBody
     ): List<ConsultaRecord>
 
+    // CORREÇÃO: Adicionado Header Content-Type
+    @Headers("Content-Type: application/json")
     @POST("api/data")
     suspend fun consultarPorId(
         @Header("Authorization") authHeader: String,
