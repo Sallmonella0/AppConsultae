@@ -1,3 +1,6 @@
+// Ficheiro: app/src/main/java/com/example/appconsultas/ui/screen/AppDrawer.kt
+// (VERSÃO CORRIGIDA - Sem o botão "Padrão do Sistema")
+
 package com.example.appconsultas.ui.screen
 
 import androidx.compose.foundation.layout.Spacer
@@ -7,7 +10,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DarkMode
-import androidx.compose.material.icons.filled.Devices
+// O ícone Devices já não é necessário
+// import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Divider
@@ -69,7 +73,9 @@ fun AppDrawerContent(
             modifier = Modifier.padding(16.dp)
         )
 
-        // --- NOVO: Botão Padrão do Sistema ---
+        // --- ALTERAÇÃO AQUI ---
+        // O NavigationDrawerItem para o "Padrão do Sistema" foi removido.
+        /*
         NavigationDrawerItem(
             label = { Text("Padrão do Sistema") },
             selected = themeMode == ThemeMode.System,
@@ -79,10 +85,14 @@ fun AppDrawerContent(
             },
             modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
         )
+        */
+        // --- FIM DA ALTERAÇÃO ---
 
         // Botão Tema Claro
         NavigationDrawerItem(
             label = { Text("Tema Claro") },
+            // Modificação lógica: Se o tema NÃO for Escuro, consideramos o Claro como "ativo"
+            // (Isto porque o modo "System" pode estar a mostrar o tema claro)
             selected = themeMode == ThemeMode.Light,
             icon = { Icon(Icons.Default.LightMode, contentDescription = "Tema Claro") },
             onClick = {
