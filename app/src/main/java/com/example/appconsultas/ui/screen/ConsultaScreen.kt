@@ -22,6 +22,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+// ADICIONADO: Import para o modelo de Cliente
+import com.example.appconsultas.data.Cliente
 import com.example.appconsultas.data.ConsultaRecord
 import com.example.appconsultas.data.DateUtils
 import com.example.appconsultas.ui.viewmodel.Coluna
@@ -127,6 +129,7 @@ fun ConsultaScreen(viewModel: ConsultaViewModel) {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
+            // A função ControlesDaConsulta foi atualizada
             ControlesDaConsulta(viewModel)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -151,13 +154,26 @@ fun ConsultaScreen(viewModel: ConsultaViewModel) {
     }
 }
 
+// MODIFICADO: Esta função foi atualizada
 @Composable
 fun ControlesDaConsulta(viewModel: ConsultaViewModel) {
     val textoIdConsulta by viewModel.textoIdConsulta.collectAsState()
     val textoDoFiltro by viewModel.textoDoFiltro.collectAsState()
     val colunaFiltro by viewModel.colunaFiltroSelecionada.collectAsState()
 
+    // ADICIONADO: Obtém os estados do cliente do ViewModel
+    val cliente by viewModel.clienteSelecionado.collectAsState()
+    val clientes = viewModel.clientesDisponiveis // Obtém a lista
+
     Column {
+        // ADICIONADO: O seletor de cliente
+        SeletorDeCliente(
+            clienteSelecionado = cliente,
+            clientesDisponiveis = clientes,
+            onClienteChange = { viewModel.onClienteSelecionadoChange(it) }
+        )
+        Spacer(modifier = Modifier.height(8.dp)) // Espaço entre o seletor e o campo de ID
+
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = textoIdConsulta,
@@ -208,11 +224,14 @@ fun MenuDeOrdenacao(viewModel: ConsultaViewModel) {
     val colunaOrdenacao by viewModel.colunaOrdenacao.collectAsState()
     val ordemDescendente by viewModel.ordemDescendente.collectAsState()
 
+    // Atualizado para incluir todas as colunas
     val colunasParaOrdenar = listOf(
         Coluna.DATA_HORA,
         Coluna.PLACA,
         Coluna.ID_MENSAGEM,
-        Coluna.TRACK_ID
+        Coluna.TRACK_ID,
+        Coluna.LATITUDE,
+        Coluna.LONGITUDE
     )
 
     Box {
@@ -245,6 +264,9 @@ fun MenuDeOrdenacao(viewModel: ConsultaViewModel) {
         }
     }
 }
+
+// O resto do ficheiro (ListaDeRegistosEmCartoes, RegistoCard, EstadoVazio, DetailsDialog,
+// FiltroColunaDropDown, ThemeMenu) permanece igual ao original.
 
 @Composable
 fun ListaDeRegistosEmCartoes(
@@ -301,6 +323,7 @@ fun RegistoCard(registo: ConsultaRecord, onClick: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
+                // Usa o DateUtils para formatar
                 text = DateUtils.formatarDataHora(registo.dataHora),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -343,6 +366,7 @@ fun DetailsDialog(record: ConsultaRecord, onDismiss: () -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 val details = listOf(
+                    // Usa o DateUtils para formatar
                     "Data/Hora" to DateUtils.formatarDataHora(record.dataHora),
                     "IDMENSAGEM" to (record.idMensagem.toString()),
                     "Latitude" to (record.latitude?.toString() ?: "N/A"),
@@ -373,6 +397,7 @@ fun DetailsDialog(record: ConsultaRecord, onDismiss: () -> Unit) {
                             try {
                                 context.startActivity(mapIntent)
                             } catch (e: Exception) {
+                                // Fallback se o Google Maps não estiver instalado
                                 context.startActivity(Intent(Intent.ACTION_VIEW, gmmIntentUri))
                             }
                         }
@@ -471,6 +496,53 @@ fun ThemeMenu(viewModel: ConsultaViewModel) {
                     )
                 }
             )
+        }
+    }
+}
+
+// ADICIONADO: Novo Composable para o seletor de cliente
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SeletorDeCliente(
+    clienteSelecionado: Cliente,
+    clientesDisponiveis: List<Cliente>,
+    onClienteChange: (Cliente) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    // Usamos ExposedDropdownMenuBox para um estilo OutlinedTextField
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier.fillMaxWidth()
+    ) {
+        OutlinedTextField(
+            value = clienteSelecionado.nome,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Cliente Selecionado") },
+            leadingIcon = { Icon(Icons.Default.Person, contentDescription = "Cliente") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth()
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            // Cria um item de menu para cada cliente na lista
+            clientesDisponiveis.forEach { cliente ->
+                DropdownMenuItem(
+                    text = { Text(cliente.nome) },
+                    onClick = {
+                        onClienteChange(cliente) // Informa o ViewModel da mudança
+                        expanded = false
+                    }
+                )
+            }
         }
     }
 }

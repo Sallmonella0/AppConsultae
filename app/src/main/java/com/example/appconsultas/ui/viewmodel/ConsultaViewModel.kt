@@ -3,16 +3,20 @@ package com.example.appconsultas.ui.viewmodel
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+// IMPORTAR O NOVO MODELO (Assume que criaste Cliente.kt em 'data')
+import com.example.appconsultas.data.Cliente
 import com.example.appconsultas.data.ConsultaRecord
 import com.example.appconsultas.data.ConsultaRequestBody
 import com.example.appconsultas.data.RetrofitInstance
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
+// Enumeração para o filtro (igual ao original)
 enum class ColunaFiltro {
     TODAS, PLACA, TRACK_ID
 }
 
+// Enumeração para as colunas (igual ao original)
 enum class Coluna(val displayName: String) {
     DATA_HORA("Data/Hora"),
     ID_MENSAGEM("ID Mensagem"),
@@ -24,8 +28,42 @@ enum class Coluna(val displayName: String) {
 
 class ConsultaViewModel : ViewModel() {
 
-    private val authHeader = "Basic dmlwOjgzMTE0ZDhmYzMxNjRkZTRlODViNGU2ZWU4YTA0YmJk"
+    val clientesDisponiveis = listOf(
+        Cliente(
+            nome = "vip",
+            authHeader = "Basic 83114d8fc3164de4e85b4e6ee8a04bbd"
+        ),
+        Cliente(
+            nome = "ckl",
+            authHeader = "Basic d4f864e8421eb0bf07384a1ae831ab7b"
+        ),
+        Cliente(
+            nome = "everselog",
+            authHeader = "Basic dbbc6fa7bdaa7c9092a2b2560594ec55"
+        ),
+        Cliente(
+            nome = "rodoleve",
+            authHeader = "Basic d3a0b71c95972adf17822e30362680f8"
+        ),
+        Cliente(
+            nome = "servidorGxBeloog",
+            authHeader = "Basic 0330265cbb2bf452ae54226c43b3d081"
+        ),
+        Cliente(
+            nome = "gallotti",
+            authHeader = "Basic 0cb9bcfb3bd24a8ad373bb1c005e25c0"
+        ),
+        Cliente(
+            nome = "transgires",
+            authHeader = "Basic 18833edf8866b7f280266ecee733a43d"
+        ),
+        Cliente(
+            nome = "Agregamais",
+            authHeader = "Basic eabfe1ffdb963ed3656da4ed91f7b37a"
+        )
+    )
 
+    // --- ESTADOS INTERNOS (Privados) ---
     private val _todosOsRegistos = MutableStateFlow<List<ConsultaRecord>>(emptyList())
     private val _textoDoFiltro = MutableStateFlow("")
     private val _textoIdConsulta = MutableStateFlow("")
@@ -34,9 +72,14 @@ class ConsultaViewModel : ViewModel() {
     private val _colunaOrdenacao = MutableStateFlow<Coluna?>(null)
     private val _ordemDescendente = MutableStateFlow(true)
     private val _registoSelecionado = MutableStateFlow<ConsultaRecord?>(null)
+    private val _isDarkTheme = MutableStateFlow(false)
 
-    // REMOVIDO: a lógica de colunas visíveis (_colunasVisiveis) foi retirada.
+    // ADICIONADO: Estado interno para o cliente selecionado
+    // Começa com o primeiro cliente da lista
+    private val _clienteSelecionado = MutableStateFlow(clientesDisponiveis.first())
 
+
+    // --- ESTADOS EXPOSTOS PARA A UI (Públicos) ---
     val textoDoFiltro = _textoDoFiltro.asStateFlow()
     val textoIdConsulta = _textoIdConsulta.asStateFlow()
     val isLoading = _isLoading.asStateFlow()
@@ -44,14 +87,16 @@ class ConsultaViewModel : ViewModel() {
     val colunaOrdenacao = _colunaOrdenacao.asStateFlow()
     val ordemDescendente = _ordemDescendente.asStateFlow()
     val registoSelecionado = _registoSelecionado.asStateFlow()
-
-    private val _isDarkTheme = MutableStateFlow(false)
     val isDarkTheme = _isDarkTheme.asStateFlow()
+
+    // ADICIONADO: Estado exposto para o cliente selecionado
+    val clienteSelecionado = _clienteSelecionado.asStateFlow()
 
     fun setTheme(isDark: Boolean) {
         _isDarkTheme.value = isDark
     }
 
+    // Lógica de filtragem e ordenação (igual ao original)
     val registosFinais: StateFlow<List<ConsultaRecord>> = combine(
         _todosOsRegistos, _textoDoFiltro, _colunaFiltroSelecionada, _colunaOrdenacao, _ordemDescendente
     ) { lista, texto, colFiltro, colSort, isDesc ->
@@ -87,13 +132,30 @@ class ConsultaViewModel : ViewModel() {
         carregarDadosIniciais()
     }
 
+    // --- FUNÇÕES CHAMADAS PELA UI ---
+
+    // ADICIONADO: Função para a UI atualizar o cliente
+    fun onClienteSelecionadoChange(novoCliente: Cliente) {
+        if (novoCliente == _clienteSelecionado.value) return // Não faz nada se for o mesmo
+
+        _clienteSelecionado.value = novoCliente
+        // Ao trocar de cliente, limpamos os filtros e carregamos os dados desse novo cliente
+        limparFiltros()
+        carregarDadosIniciais()
+    }
+
+
     fun carregarDadosIniciais() {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 _textoIdConsulta.value = ""
-                val requestBody = ConsultaRequestBody(IDMENSAGEM = 0)
-                _todosOsRegistos.value = RetrofitInstance.api.buscarTodos(authHeader, requestBody)
+                val requestBody = ConsultaRequestBody(IDMENSAGEM = 0) //
+
+                // MODIFICADO: Usar o header do cliente selecionado
+                val header = _clienteSelecionado.value.authHeader
+                _todosOsRegistos.value = RetrofitInstance.api.buscarTodos(header, requestBody) //
+
             } catch (e: Exception) {
                 Log.e("ConsultaViewModel", "Falha ao carregar dados iniciais: ${e.message}", e)
                 _todosOsRegistos.value = emptyList()
@@ -108,8 +170,12 @@ class ConsultaViewModel : ViewModel() {
             _isLoading.value = true
             try {
                 _textoDoFiltro.value = ""
-                val requestBody = ConsultaRequestBody(IDMENSAGEM = id)
-                _todosOsRegistos.value = RetrofitInstance.api.consultarPorId(authHeader, requestBody)
+                val requestBody = ConsultaRequestBody(IDMENSAGEM = id) //
+
+                // MODIFICADO: Usar o header do cliente selecionado
+                val header = _clienteSelecionado.value.authHeader
+                _todosOsRegistos.value = RetrofitInstance.api.consultarPorId(header, requestBody) //
+
             } catch (e: Exception) {
                 Log.e("ConsultaViewModel", "Falha ao consultar por ID: ${e.message}", e)
                 _todosOsRegistos.value = emptyList()
@@ -118,8 +184,8 @@ class ConsultaViewModel : ViewModel() {
         }
     }
 
+    // Funções de exportação (iguais ao original)
     fun gerarConteudoCSV(): String {
-        // ... (código inalterado)
         val registos = registosFinais.value
         val stringBuilder = StringBuilder()
         stringBuilder.append("DATAHORA,IDMENSAGEM,LATITUDE,LONGITUDE,PLACA,TrackID\n")
@@ -136,7 +202,6 @@ class ConsultaViewModel : ViewModel() {
     }
 
     fun gerarConteudoXML(): String {
-        // ... (código inalterado)
         val registos = registosFinais.value
         val stringBuilder = StringBuilder()
         stringBuilder.append("<consultas>\n")
@@ -154,6 +219,7 @@ class ConsultaViewModel : ViewModel() {
         return stringBuilder.toString()
     }
 
+    // Funções de controlo de estado (iguais ao original)
     fun onTextoDoFiltroChange(novoTexto: String) { _textoDoFiltro.value = novoTexto }
     fun onTextoIdChange(novoId: String) { _textoIdConsulta.value = novoId }
     fun onColunaFiltroChange(novaColuna: ColunaFiltro) { _colunaFiltroSelecionada.value = novaColuna }
@@ -170,8 +236,6 @@ class ConsultaViewModel : ViewModel() {
     fun limparFiltros() {
         _textoDoFiltro.value = ""
     }
-
-    // REMOVIDO: A função toggleVisibilidadeColuna() foi retirada.
 
     fun onRegistoClicked(registo: ConsultaRecord) {
         _registoSelecionado.value = registo
